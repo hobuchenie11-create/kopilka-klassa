@@ -300,6 +300,20 @@ grant execute on function public.class_admin_reset_others(uuid, text)   to anon,
 revoke execute on function public.auth_check(uuid, text) from anon, authenticated;
 revoke execute on function public.sha(text)             from anon, authenticated;
 
+-- ── Отметка «база жива» ────────────────────────────────────────
+-- Бесплатный Supabase усыпляет проект после недели без обращений,
+-- и за летние каникулы класс это неизбежно ловит. Внешняя служба
+-- раз в несколько дней дёргает эту функцию — обращение засчитано,
+-- проект не засыпает. Наружу она не отдаёт ничего, кроме времени,
+-- и объявлена stable, чтобы её можно было вызвать обычной ссылкой
+-- (GET), без настройки заголовков в службе опроса.
+create or replace function public.ping()
+returns timestamptz language sql stable
+set search_path = public, extensions as $$
+  select now()
+$$;
+grant execute on function public.ping() to anon, authenticated;
+
 -- ── Обновить кэш API ───────────────────────────────────────────
 -- Supabase держит список функций в кэше. Без этой строки только что
 -- созданные функции могут какое-то время отвечать «404 не найдено».
@@ -324,3 +338,16 @@ comment on table public.classes is
 -- Посмотреть заведённые классы (сами данные не показываются):
 --   select id, version, updated_at, array_length(admin_hashes,1) as казначеев
 --     from public.classes order by created_at;
+--
+-- Добавить ещё один пароль администратора, не зная прежних
+-- (прежние продолжают работать) — этим же возвращают себе доступ,
+-- если единственный пароль забылся:
+--   update public.classes
+--      set admin_hashes = admin_hashes || public.sha('новый-пароль');
+--
+-- Оставить ровно два пароля и стереть все остальные:
+--   update public.classes
+--      set admin_hashes = array[public.sha('первый'), public.sha('второй')];
+--
+-- Сменить код класса для родителей (им нужно будет сообщить новый):
+--   update public.classes set code_hash = public.sha('новый-код-класса');
